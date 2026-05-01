@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>EagleEye</title>
+<meta name="theme-color" content="#1A2B4A"/>
+<meta name="description" content="EagleEye Security — إدارة العملاء والزيارات والفواتير"/>
+<link rel="manifest" id="pwa-manifest"/>
+<script>
+// ── Inline PWA Manifest ───────────────────────────────────────────────────
+const manifest = {
+  name: "EagleEye Security",
+  short_name: "EagleEye",
+  description: "إدارة العملاء والزيارات والفواتير",
+  start_url: ".",
+  display: "standalone",
+  orientation: "portrait",
+  background_color: "#1A2B4A",
+  theme_color: "#1A2B4A",
+  lang: "ar",
+  icons: [
+    { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231A2B4A'/><text y='.9em' font-size='72' x='14'>🦅</text></svg>", sizes: "192x192", type: "image/svg+xml" },
+    { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231A2B4A'/><text y='.9em' font-size='72' x='14'>🦅</text></svg>", sizes: "512x512", type: "image/svg+xml" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+
+// ── Inline Service Worker (offline support) ───────────────────────────────
+const swCode = `
+const CACHE = 'eagleeye-v1';
+const URLS  = ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'];
+self.addEventListener('install',  e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS))); self.skipWaiting(); });
+self.addEventListener('activate', e => { self.clients.claim(); });
+self.addEventListener('fetch',    e => { e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); return res; }))); });
+`;
+if ('serviceWorker' in navigator) {
+  const swBlob = new Blob([swCode], {type:'application/javascript'});
+  const swURL  = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(()=>{});
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --navy: #1A2B4A;
+  --gold: #C9A84C;
+  --gold2: #E8B84B;
+  --light: #F0F4F8;
+  --white: #fff;
+  --gray: #6B7C93;
+  --red: #EF4444;
+  --green: #22C55E;
+  --radius: 14px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: var(--light); font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: var(--navy); }
+
+/* ── LAYOUT ── */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#topbar { background: var(--navy); color: var(--gold); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 56px; flex-shrink: 0; box-shadow: 0 2px 12px #0004; }
+#topbar .title { font-weight: 900; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+#topbar .subtitle { font-size: 10px; color: #8FA8C8; }
+#content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 12px 8px; -webkit-overflow-scrolling: touch; }
+#navbar { background: var(--navy); display: flex; padding-bottom: var(--safe-bottom); flex-shrink: 0; }
+.nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0 8px; gap: 3px; border: none; background: none; color: #5A7090; cursor: pointer; font-size: 10px; font-family: inherit; transition: color .2s; }
+.nav-btn.active { color: var(--gold); }
+.nav-btn .icon { font-size: 22px; }
+
+/* ── CARDS ── */
+.card { background: var(--white); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 12px #1A2B4A0F; }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.card-title { font-weight: 800; font-size: 15px; color: var(--navy); display: flex; align-items: center; gap: 8px; }
+.card-title::before { content: ''; display: block; width: 4px; height: 20px; background: var(--gold); border-radius: 2px; }
+
+/* ── INPUTS ── */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11px; font-weight: 700; color: var(--gray); margin-bottom: 5px; letter-spacing: .4px; }
+.field input, .field select, .field textarea {
+  width: 100%; padding: 11px 13px; border-radius: 10px;
+  border: 1.5px solid #D6E0EA; font-size: 15px; font-family: inherit;
+  outline: none; background: #FAFCFF; color: var(--navy);
+  transition: border-color .2s; direction: rtl;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px #C9A84C20; }
+.field textarea { resize: none; height: 72px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── BUTTONS ── */
+.btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-size: 15px; font-weight: 800; font-family: inherit; cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btn-gold { background: linear-gradient(135deg, var(--gold), var(--gold2)); color: var(--navy); box-shadow: 0 4px 16px #C9A84C44; }
+.btn-navy { background: var(--navy); color: var(--gold); }
+.btn-green { background: linear-gradient(135deg, #16A34A, #22C55E); color: #fff; }
+.btn-red { background: #FEE2E2; color: var(--red); }
+.btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 9px; width: auto; }
+.btn:active { transform: scale(.97); }
+
+/* ── LIST ITEMS ── */
+.list-item { background: var(--white); border-radius: 12px; padding: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 6px #1A2B4A0C; cursor: pointer; transition: transform .15s; }
+.list-item:active { transform: scale(.98); }
+.list-item .avatar { width: 44px; height: 44px; border-radius: 12px; background: var(--navy); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.list-item .info { flex: 1; min-width: 0; }
+.list-item .name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-item .sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
+.list-item .badge { background: var(--gold); color: var(--navy); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+
+/* ── VISIT BADGE ── */
+.visit-type { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.vt-maintenance { background: #DBEAFE; color: #1D4ED8; }
+.vt-fault       { background: #FEE2E2; color: #DC2626; }
+.vt-addition    { background: #D1FAE5; color: #065F46; }
+.vt-followup    { background: #FEF3C7; color: #92400E; }
+
+/* ── INVOICE TABLE ── */
+.inv-row { display: grid; grid-template-columns: 1fr 64px 88px 28px; gap: 6px; align-items: center; margin-bottom: 7px; padding: 7px 8px; border-radius: 10px; border: 1px solid #E8EEF5; }
+.inv-row.even { background: #F8FAFC; }
+.inv-row input { border: 1.5px solid #D6E0EA; border-radius: 8px; padding: 7px 8px; font-size: 13px; font-family: inherit; outline: none; background: #fff; width: 100%; color: var(--navy); }
+.inv-row input:focus { border-color: var(--gold); }
+.inv-hdr { display: grid; grid-template-columns: 1fr 64px 88px 28px; gap: 6px; padding: 8px 10px; background: var(--navy); border-radius: 10px; margin-bottom: 8px; }
+.inv-hdr span { color: var(--gold); font-size: 11px; font-weight: 700; text-align: center; }
+.inv-hdr span:first-child { text-align: right; }
+
+/* ── TOTALS BOX ── */
+.totals { background: #F8FAFC; border-radius: 12px; padding: 14px; margin-top: 14px; border-top: 3px solid var(--gold); }
+.total-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #E8EEF5; font-size: 14px; }
+.total-row:last-child { border: none; }
+.total-final { background: var(--navy); border-radius: 10px; padding: 10px 14px; margin-top: 8px; display: flex; justify-content: space-between; }
+.total-final span { color: var(--gold); font-weight: 800; font-size: 16px; }
+
+/* ── MODAL ── */
+.modal-bg { position: fixed; inset: 0; background: #0008; z-index: 200; display: flex; align-items: flex-end; }
+.modal { background: var(--white); border-radius: 24px 24px 0 0; padding: 20px 16px calc(20px + var(--safe-bottom)); width: 100%; max-height: 90vh; overflow-y: auto; animation: slideUp .25s ease; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-title { font-weight: 900; font-size: 17px; text-align: center; margin-bottom: 18px; color: var(--navy); }
+.modal-handle { width: 40px; height: 4px; background: #D6E0EA; border-radius: 2px; margin: 0 auto 16px; }
+
+/* ── EMPTY STATE ── */
+.empty { text-align: center; padding: 48px 24px; color: var(--gray); }
+.empty .icon { font-size: 48px; margin-bottom: 12px; }
+.empty p { font-size: 14px; }
+
+/* ── FAB ── */
+.fab { position: fixed; left: 20px; bottom: calc(76px + var(--safe-bottom)); width: 56px; height: 56px; border-radius: 18px; background: linear-gradient(135deg, var(--gold), var(--gold2)); border: none; font-size: 26px; cursor: pointer; box-shadow: 0 4px 20px #C9A84C55; display: flex; align-items: center; justify-content: center; transition: transform .2s; z-index: 100; }
+.fab:active { transform: scale(.93); }
+
+/* ── STATS ── */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.stat-card { background: var(--white); border-radius: 14px; padding: 14px; text-align: center; box-shadow: 0 2px 10px #1A2B4A0F; }
+.stat-val { font-size: 24px; font-weight: 900; color: var(--navy); }
+.stat-lbl { font-size: 11px; color: var(--gray); margin-top: 4px; }
+.stat-card.gold { background: var(--navy); }
+.stat-card.gold .stat-val { color: var(--gold); }
+.stat-card.gold .stat-lbl { color: #8FA8C8; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div>
+      <div class="title">🦅 EagleEye</div>
+      <div class="subtitle">Security & Networking — Aswan</div>
+    </div>
+    <div id="topbar-action"></div>
+  </div>
+  <div id="content"></div>
+  <nav id="navbar">
+    <button class="nav-btn active" data-tab="clients" onclick="switchTab('clients')">
+      <span class="icon">👥</span>العملاء
+    </button>
+    <button class="nav-btn" data-tab="visits" onclick="switchTab('visits')">
+      <span class="icon">🔧</span>الزيارات
+    </button>
+    <button class="nav-btn" data-tab="invoice" onclick="switchTab('invoice')">
+      <span class="icon">🧾</span>فاتورة
+    </button>
+    <button class="nav-btn" data-tab="reports" onclick="switchTab('reports')">
+      <span class="icon">📊</span>التقارير
+    </button>
+  </nav>
+</div>
+
+<script>
+// ── DATA LAYER ────────────────────────────────────────────────────────────────
+const DB = {
+  get clients() { return JSON.parse(localStorage.getItem('ee_clients')||'[]'); },
+  get visits()  { return JSON.parse(localStorage.getItem('ee_visits')||'[]'); },
+  saveClients(d){ localStorage.setItem('ee_clients', JSON.stringify(d)); },
+  saveVisits(d) { localStorage.setItem('ee_visits',  JSON.stringify(d)); },
+  addClient(c)  { const d=[...this.clients,{...c,id:Date.now()}]; this.saveClients(d); return d; },
+  addVisit(v)   { const d=[...this.visits, {...v,id:Date.now()}]; this.saveVisits(d);  return d; },
+  delClient(id) { const d=this.clients.filter(c=>c.id!==id); this.saveClients(d); return d; },
+  delVisit(id)  { const d=this.visits.filter(v=>v.id!==id);  this.saveVisits(d);  return d; },
+};
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let currentTab = 'clients';
+let modal = null;
+
+// Invoice state
+let invoiceItems = [
+  {desc:'كاميرا Hikvision 5MP',qty:'',price:''},
+  {desc:'DVR/NVR 16 مخرج',qty:'',price:''},
+  {desc:'هارد ديسك 2TB WD',qty:'',price:''},
+  {desc:'باور سبلاي مركزي',qty:'',price:''},
+  {desc:'سلك RG59+Power (م)',qty:'',price:''},
+  {desc:'BNC + DC مستلزمات',qty:'',price:''},
+  {desc:'حامل 60 سم',qty:'',price:''},
+  {desc:'تركيب',qty:'',price:''},
+];
+let invoiceClient = {name:'',address:'',date:'',billNo:'',deposit:''};
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => n > 0 ? n.toLocaleString('ar-EG') + ' ج.م' : '—';
+const num = v => parseFloat(v)||0;
+const vtClass = t => ({'صيانة دورية':'vt-maintenance','عطل':'vt-fault','إضافة':'vt-addition','متابعة':'vt-followup'}[t]||'vt-maintenance');
+const today = () => new Date().toISOString().split('T')[0];
+
+function closeModal() {
+  if (modal) { modal.remove(); modal = null; }
+}
+
+function showModal(html) {
+  closeModal();
+  modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal">${html}</div>`;
+  modal.addEventListener('click', e => { if(e.target===modal) closeModal(); });
+  document.body.appendChild(modal);
+}
+
+// ── TAB SWITCHER ──────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  $('topbar-action').innerHTML = '';
+  render();
+}
+
+function render() {
+  const views = { clients: renderClients, visits: renderVisits, invoice: renderInvoice, reports: renderReports };
+  $('content').innerHTML = views[currentTab]();
+  if (currentTab === 'invoice') bindInvoice();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CLIENTS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function renderClients() {
+  const clients = DB.clients;
+  const visits  = DB.visits;
+  const items = clients.map(c => {
+    const cvs = visits.filter(v => v.clientId === c.id);
+    const last = cvs.length ? cvs.sort((a,b)=>b.date.localeCompare(a.date))[0].date : null;
+    return `
+    <div class="list-item" onclick="openClient(${c.id})">
+      <div class="avatar">🏢</div>
+      <div class="info">
+        <div class="name">${c.name}</div>
+        <div class="sub">${c.address||'—'} • ${c.phone||''}</div>
+        <div class="sub" style="margin-top:3px;color:#8FA8C8">${last?'آخر زيارة: '+last:'لا توجد زيارات'}</div>
+      </div>
+      <div class="badge">${cvs.length} زيارة</div>
+    </div>`;
+  }).join('');
+
+  return `
+    ${clients.length===0 ? `<div class="empty"><div class="icon">👥</div><p>لا يوجد عملاء حتى الآن<br>اضغط + لإضافة عميل</p></div>` : items}
+    <button class="fab" onclick="addClientModal()">＋</button>`;
+}
+
+function addClientModal(existing) {
+  const c = existing || {};
+  showModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${existing?'تعديل العميل':'➕ عميل جديد'}</div>
+    <div class="field"><label>اسم العميل *</label><input id="m-name" value="${c.name||''}" placeholder="اسم المحل أو الشركة"/></div>
+    <div class="field"><label>العنوان / الموقع</label><input id="m-addr" value="${c.address||''}" placeholder="الشارع والمنطقة"/></div>
+    <div class="field"><label>رقم التليفون</label><input id="m-phone" type="tel" value="${c.phone||''}" placeholder="01xxxxxxxxx"/></div>
+    <div class="grid2">
+      <div class="field"><label>نوع النظام</label><input id="m-sys" value="${c.system||''}" placeholder="DVR / NVR / IP"/></div>
+      <div class="field"><label>عدد الكاميرات</label><input id="m-cams" type="number" value="${c.cameras||''}" placeholder="0"/></div>
+    </div>
+    <div class="field"><label>تاريخ التركيب</label><input id="m-inst" type="date" value="${c.installDate||''}"/></div>
+    <div class="field"><label>ملاحظات النظام (باسورد، نوع الكاميرات…)</label><textarea id="m-notes">${c.notes||''}</textarea></div>
+    <button class="btn btn-gold" style="margin-top:6px" onclick="saveClient(${existing?existing.id:'null'})">💾 حفظ</button>
+  `);
+}
+
+function saveClient(existingId) {
+  const name = $('m-name').value.trim();
+  if (!name) { alert('اكتب اسم العميل'); return; }
+  const data = {
+    name, address:$('m-addr').value.trim(), phone:$('m-phone').value.trim(),
+    system:$('m-sys').value.trim(), cameras:$('m-cams').value,
+    installDate:$('m-inst').value, notes:$('m-notes').value.trim(),
+  };
+  if (existingId) {
+    const clients = DB.clients.map(c => c.id===existingId ? {...c,...data} : c);
+    DB.saveClients(clients);
+  } else {
+    DB.addClient(data);
+  }
+  closeModal(); render();
+}
+
+function openClient(id) {
+  const c = DB.clients.find(c=>c.id===id);
+  const visits = DB.visits.filter(v=>v.clientId===id).sort((a,b)=>b.date.localeCompare(a.date));
+  const totalParts = visits.reduce((s,v)=>s+num(v.partsCost),0);
+  const totalService = visits.reduce((s,v)=>s+num(v.serviceFee),0);
+
+  showModal(`
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="modal-title" style="margin:0">${c.name}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-navy" onclick="closeModal();addClientModal(${JSON.stringify(c).replace(/"/g,'&quot;')})">✏️</button>
+        <button class="btn btn-sm btn-red" onclick="deleteClient(${id})">🗑</button>
+      </div>
+    </div>
+
+    <div style="background:#F8FAFC;border-radius:12px;padding:12px;margin-bottom:14px;font-size:13px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><span style="color:var(--gray)">📍 </span>${c.address||'—'}</div>
+        <div><span style="color:var(--gray)">📞 </span>${c.phone||'—'}</div>
+        <div><span style="color:var(--gray)">🎥 </span>${c.cameras||'—'} كاميرا</div>
+        <div><span style="color:var(--gray)">🖥 </span>${c.system||'—'}</div>
+        ${c.installDate?`<div style="grid-column:span 2"><span style="color:var(--gray)">📅 تركيب: </span>${c.installDate}</div>`:''}
+        ${c.notes?`<div style="grid-column:span 2;color:var(--navy);background:#FFF9E6;border-radius:8px;padding:8px;margin-top:4px">🔑 ${c.notes}</div>`:''}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="stat-card"><div class="stat-val">${visits.length}</div><div class="stat-lbl">زيارة</div></div>
+      <div class="stat-card gold"><div class="stat-val">${(totalParts+totalService).toLocaleString()}</div><div class="stat-lbl">إجمالي ج.م</div></div>
+    </div>
+
+    <button class="btn btn-green" style="margin-bottom:14px" onclick="closeModal();addVisitModal(${id})">+ تسجيل زيارة جديدة</button>
+
+    <div style="font-weight:800;font-size:13px;color:var(--gray);margin-bottom:8px">آخر الزيارات</div>
+    ${visits.slice(0,5).map(v=>`
+      <div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:13px;font-weight:700">${v.date} &nbsp;<span class="visit-type ${vtClass(v.type)}">${v.type}</span></div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px">${v.problem||'—'}</div>
+        </div>
+        <div style="text-align:left;font-size:12px;color:var(--gold);font-weight:700">${(num(v.partsCost)+num(v.serviceFee)).toLocaleString()} ج.م</div>
+      </div>`).join('')}
+    ${visits.length===0?'<div class="empty" style="padding:24px 0"><div class="icon">🔧</div><p>لا توجد زيارات</p></div>':''}
+  `);
+}
+
+function deleteClient(id) {
+  if (!confirm('حذف هذا العميل؟')) return;
+  DB.delClient(id);
+  closeModal(); render();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISITS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function renderVisits() {
+  const visits  = DB.visits.sort((a,b)=>b.date.localeCompare(a.date));
+  const clients = DB.clients;
+
+  const items = visits.map(v => {
+    const c = clients.find(c=>c.id===v.clientId);
+    const total = num(v.partsCost)+num(v.serviceFee);
+    return `
+    <div class="list-item" onclick="openVisit(${v.id})">
+      <div class="avatar">🔧</div>
+      <div class="info">
+        <div class="name">${c?c.name:'عميل محذوف'}</div>
+        <div class="sub">${v.date} &nbsp;<span class="visit-type ${vtClass(v.type)}">${v.type}</span></div>
+        <div class="sub" style="margin-top:3px">${v.problem||'—'}</div>
+      </div>
+      ${total>0?`<div class="badge">${total.toLocaleString()}</div>`:''}
+    </div>`;
+  }).join('');
+
+  return `
+    ${visits.length===0?`<div class="empty"><div class="icon">🔧</div><p>لا توجد زيارات مسجلة</p></div>`:items}
+    <button class="fab" onclick="addVisitModal(null)">＋</button>`;
+}
+
+function addVisitModal(clientId) {
+  const clients = DB.clients;
+  const clientOptions = clients.map(c=>`<option value="${c.id}" ${c.id===clientId?'selected':''}>${c.name}</option>`).join('');
+  showModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">🔧 تسجيل زيارة</div>
+    <div class="field"><label>العميل *</label>
+      <select id="v-client">
+        <option value="">اختر العميل</option>
+        ${clientOptions}
+      </select>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>التاريخ</label><input id="v-date" type="date" value="${today()}"/></div>
+      <div class="field"><label>نوع الزيارة</label>
+        <select id="v-type">
+          <option>صيانة دورية</option><option>عطل</option><option>إضافة</option><option>متابعة</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>المشكلة / سبب الزيارة</label><textarea id="v-problem" placeholder="مثال: كاميرا 3 صورتها مش واضحة"></textarea></div>
+    <div class="field"><label>الشغل اللي اتعمل</label><textarea id="v-work" placeholder="مثال: نضفنا العدسة وظبطنا الزاوية"></textarea></div>
+    <div class="field"><label>القطع المستخدمة</label><input id="v-parts" placeholder="مثال: باور سبلاي 12V، كاميرا Hik"/></div>
+    <div class="grid2">
+      <div class="field"><label>تكلفة القطع (ج.م)</label><input id="v-pcost" type="number" placeholder="0"/></div>
+      <div class="field"><label>قيمة الخدمة (ج.م)</label><input id="v-sfee" type="number" placeholder="0"/></div>
+    </div>
+    <div class="field"><label>ملاحظات إضافية</label><input id="v-notes" placeholder="أي ملاحظات…"/></div>
+    <button class="btn btn-gold" style="margin-top:6px" onclick="saveVisit()">💾 حفظ الزيارة</button>
+  `);
+}
+
+function saveVisit() {
+  const clientId = parseInt($('v-client').value);
+  if (!clientId) { alert('اختر العميل'); return; }
+  DB.addVisit({
+    clientId, date:$('v-date').value, type:$('v-type').value,
+    problem:$('v-problem').value.trim(), work:$('v-work').value.trim(),
+    parts:$('v-parts').value.trim(), partsCost:$('v-pcost').value,
+    serviceFee:$('v-sfee').value, notes:$('v-notes').value.trim(),
+  });
+  closeModal(); render();
+}
+
+function openVisit(id) {
+  const v = DB.visits.find(v=>v.id===id);
+  const c = DB.clients.find(c=>c.id===v.clientId);
+  const total = num(v.partsCost)+num(v.serviceFee);
+  showModal(`
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="modal-title" style="margin:0">${c?c.name:'—'}</div>
+      <button class="btn btn-sm btn-red" onclick="deleteVisit(${id})">🗑</button>
+    </div>
+    <div style="background:#F8FAFC;border-radius:12px;padding:14px;font-size:14px">
+      <div style="margin-bottom:8px"><span style="color:var(--gray)">📅 </span><b>${v.date}</b> &nbsp;<span class="visit-type ${vtClass(v.type)}">${v.type}</span></div>
+      ${v.problem?`<div style="margin-bottom:8px"><span style="color:var(--gray)">🔍 المشكلة: </span>${v.problem}</div>`:''}
+      ${v.work?`<div style="margin-bottom:8px"><span style="color:var(--gray)">🔧 الشغل: </span>${v.work}</div>`:''}
+      ${v.parts?`<div style="margin-bottom:8px"><span style="color:var(--gray)">📦 القطع: </span>${v.parts}</div>`:''}
+      ${v.notes?`<div style="margin-bottom:8px"><span style="color:var(--gray)">📝 ملاحظات: </span>${v.notes}</div>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px">
+      <div class="stat-card"><div class="stat-val" style="font-size:18px">${num(v.partsCost).toLocaleString()}</div><div class="stat-lbl">تكلفة قطع</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:18px">${num(v.serviceFee).toLocaleString()}</div><div class="stat-lbl">خدمة</div></div>
+      <div class="stat-card gold"><div class="stat-val" style="font-size:18px">${total.toLocaleString()}</div><div class="stat-lbl">إجمالي ج.م</div></div>
+    </div>
+  `);
+}
+
+function deleteVisit(id) {
+  if (!confirm('حذف هذه الزيارة؟')) return;
+  DB.delVisit(id);
+  closeModal(); render();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INVOICE TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function renderInvoice() {
+  const subtotal = invoiceItems.reduce((s,it)=>s+num(it.qty)*num(it.price),0);
+  const dep = num(invoiceClient.deposit);
+  const bal = subtotal - dep;
+
+  const rows = invoiceItems.map((it,i)=>`
+    <div class="inv-row ${i%2===0?'even':''}">
+      <input value="${it.desc}" placeholder="الصنف…" onchange="invoiceItems[${i}].desc=this.value" style="direction:rtl"/>
+      <input type="number" value="${it.qty}" placeholder="كمية" onchange="invoiceItems[${i}].qty=this.value;refreshTotals()" style="direction:ltr;text-align:center"/>
+      <input type="number" value="${it.price}" placeholder="سعر" onchange="invoiceItems[${i}].price=this.value;refreshTotals()" style="direction:ltr;text-align:center"/>
+      <button onclick="invoiceItems.splice(${i},1);render()" style="background:#FEE2E2;color:#DC2626;border:none;border-radius:7px;width:26px;height:26px;font-size:15px;cursor:pointer;font-weight:800">×</button>
+    </div>`).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header"><div class="card-title">بيانات العميل</div></div>
+      <div class="field"><label>اسم العميل</label><input id="ic-name" value="${invoiceClient.name}" placeholder="أدخل اسم العميل" oninput="invoiceClient.name=this.value"/></div>
+      <div class="grid2">
+        <div class="field"><label>التاريخ</label><input id="ic-date" type="date" value="${invoiceClient.date||today()}" oninput="invoiceClient.date=this.value"/></div>
+        <div class="field"><label>رقم الفاتورة</label><input id="ic-bill" value="${invoiceClient.billNo}" placeholder="001" oninput="invoiceClient.billNo=this.value"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">الأصناف</div>
+        <button class="btn btn-sm btn-navy" onclick="invoiceItems.push({desc:'',qty:'',price:''});render()">+ إضافة</button>
+      </div>
+      <div class="inv-hdr"><span>الوصف</span><span>كمية</span><span>السعر</span><span></span></div>
+      ${rows}
+      <div class="totals">
+        <div class="total-row"><span style="color:var(--gray)">الإجمالي</span><span id="t-sub" style="font-weight:700">${fmt(subtotal)}</span></div>
+        <div class="total-row" style="align-items:center">
+          <span style="color:var(--gray)">عربون</span>
+          <input type="number" value="${invoiceClient.deposit}" placeholder="0" oninput="invoiceClient.deposit=this.value;refreshTotals()" style="width:110px;border:1.5px solid #D6E0EA;border-radius:8px;padding:6px 10px;font-size:14px;direction:ltr;text-align:center;outline:none;font-family:inherit"/>
+        </div>
+        <div class="total-final"><span>الباقي</span><span id="t-bal">${fmt(bal)}</span></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:80px">
+      <button class="btn btn-green" onclick="exportInvoiceXLSX()">⬇️ Excel</button>
+      <button class="btn btn-gold" onclick="resetInvoice()">🆕 فاتورة جديدة</button>
+    </div>`;
+}
+
+function refreshTotals() {
+  const subtotal = invoiceItems.reduce((s,it)=>s+num(it.qty)*num(it.price),0);
+  const dep = num(invoiceClient.deposit);
+  const bal = subtotal - dep;
+  const ts = $('t-sub'), tb = $('t-bal');
+  if(ts) ts.textContent = fmt(subtotal);
+  if(tb) tb.textContent = fmt(bal);
+}
+
+function bindInvoice() {
+  // inputs already use oninput inline
+}
+
+function resetInvoice() {
+  if(!confirm('تصفير الفاتورة؟')) return;
+  invoiceClient = {name:'',address:'',date:'',billNo:'',deposit:''};
+  invoiceItems = [
+    {desc:'كاميرا Hikvision 5MP',qty:'',price:''},
+    {desc:'DVR/NVR 16 مخرج',qty:'',price:''},
+    {desc:'هارد ديسك 2TB WD',qty:'',price:''},
+    {desc:'باور سبلاي مركزي',qty:'',price:''},
+    {desc:'سلك RG59+Power (م)',qty:'',price:''},
+    {desc:'BNC + DC مستلزمات',qty:'',price:''},
+    {desc:'تركيب',qty:'',price:''},
+  ];
+  render();
+}
+
+function exportInvoiceXLSX() {
+  const subtotal = invoiceItems.reduce((s,it)=>s+num(it.qty)*num(it.price),0);
+  const dep = num(invoiceClient.deposit);
+  const bal = subtotal - dep;
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['EagleEye Security — Surveillance & Networking','','','',''],
+    ['Aswan, Egypt  •  01023712330  •  Since 2015','','','',''],
+    ['SALES BILL / فاتورة بيع','','','',''],
+    [],
+    ['اسم العميل :', invoiceClient.name,'','التاريخ', invoiceClient.date],
+    ['رقم الفاتورة :', invoiceClient.billNo,'','العرض صالح لمدة 7 أيام',''],
+    [],
+    ['#','الوصف','الكمية','سعر الوحدة (ج.م)','الإجمالي (ج.م)'],
+    ...invoiceItems.map((it,i)=>{const q=num(it.qty),p=num(it.price);return [i+1,it.desc,q||'',p||'',q*p||''];}),
+    [],
+    ['','','','الإجمالي', subtotal],
+    ['','','','عربون', dep],
+    ['','','','الباقي', bal],
+    [],
+    ['خدمتكم شرف لنا — EagleEye Security'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:5},{wch:36},{wch:10},{wch:18},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws, 'client invoice');
+  XLSX.writeFile(wb, `EagleEye_${invoiceClient.billNo||'Invoice'}.xlsx`);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REPORTS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function renderReports() {
+  const visits  = DB.visits;
+  const clients = DB.clients;
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0,7);
+  const monthVisits = visits.filter(v=>v.date.startsWith(thisMonth));
+  const totalIncome = visits.reduce((s,v)=>s+num(v.partsCost)+num(v.serviceFee),0);
+  const monthIncome = monthVisits.reduce((s,v)=>s+num(v.partsCost)+num(v.serviceFee),0);
+
+  // Top clients
+  const clientTotals = clients.map(c=>{
+    const cvs = visits.filter(v=>v.clientId===c.id);
+    return { name:c.name, total:cvs.reduce((s,v)=>s+num(v.partsCost)+num(v.serviceFee),0), count:cvs.length };
+  }).sort((a,b)=>b.total-a.total).slice(0,5);
+
+  // Visit types breakdown
+  const types = ['صيانة دورية','عطل','إضافة','متابعة'];
+  const typeCounts = types.map(t=>({t, n:visits.filter(v=>v.type===t).length}));
+
+  return `
+    <div class="stats-grid">
+      <div class="stat-card gold"><div class="stat-val">${clients.length}</div><div class="stat-lbl">عميل ثابت</div></div>
+      <div class="stat-card gold"><div class="stat-val">${visits.length}</div><div class="stat-lbl">إجمالي الزيارات</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:18px">${monthIncome.toLocaleString()}</div><div class="stat-lbl">إيرادات الشهر ج.م</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:18px">${totalIncome.toLocaleString()}</div><div class="stat-lbl">إجمالي الإيرادات ج.م</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">🏆 أكثر العملاء</div>
+      ${clientTotals.length===0?'<p style="color:var(--gray);font-size:13px;text-align:center">لا يوجد بيانات</p>':
+        clientTotals.map((c,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="width:28px;height:28px;border-radius:8px;background:var(--navy);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">${i+1}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">${c.name}</div>
+            <div style="font-size:11px;color:var(--gray)">${c.count} زيارة</div>
+          </div>
+          <div style="font-weight:800;color:var(--gold);font-size:14px">${c.total.toLocaleString()} ج.م</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">📊 أنواع الزيارات</div>
+      ${typeCounts.map(({t,n})=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span class="visit-type ${vtClass(t)}" style="min-width:80px;text-align:center">${t}</span>
+          <div style="flex:1;background:#E8EEF5;border-radius:6px;height:10px;overflow:hidden">
+            <div style="height:100%;background:var(--gold);width:${visits.length?Math.round(n/visits.length*100):0}%;border-radius:6px"></div>
+          </div>
+          <span style="font-weight:700;font-size:13px;min-width:24px;text-align:center">${n}</span>
+        </div>`).join('')}
+    </div>
+
+    <div class="card" style="margin-bottom:80px">
+      <div class="card-title" style="margin-bottom:14px">💾 النسخ الاحتياطي</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button class="btn btn-navy" onclick="exportBackup()">⬇️ تصدير البيانات</button>
+        <label class="btn btn-navy" style="cursor:pointer">📂 استيراد<input type="file" accept=".json" style="display:none" onchange="importBackup(event)"/></label>
+      </div>
+    </div>`;
+}
+
+function exportBackup() {
+  const data = { clients: DB.clients, visits: DB.visits, exported: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `EagleEye_backup_${today()}.json`;
+  a.click();
+}
+
+function importBackup(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.clients) DB.saveClients(data.clients);
+      if (data.visits)  DB.saveVisits(data.visits);
+      alert('تم الاستيراد بنجاح ✅');
+      render();
+    } catch { alert('ملف غير صحيح'); }
+  };
+  reader.readAsText(file);
+}
+
+// ── PWA INSTALL PROMPT ────────────────────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  showInstallBanner();
+});
+
+function showInstallBanner() {
+  if (document.getElementById('install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'install-banner';
+  banner.style.cssText = 'position:fixed;top:56px;left:0;right:0;background:#C9A84C;color:#1A2B4A;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;z-index:150;font-family:inherit;font-size:13px;font-weight:700;box-shadow:0 2px 10px #0003';
+  banner.innerHTML = `
+    <span>📲 ثبّت التطبيق على الشاشة الرئيسية</span>
+    <div style="display:flex;gap:8px">
+      <button onclick="installApp()" style="background:#1A2B4A;color:#C9A84C;border:none;border-radius:8px;padding:6px 14px;font-weight:800;cursor:pointer;font-family:inherit">تثبيت</button>
+      <button onclick="document.getElementById('install-banner').remove()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:#1A2B4A">✕</button>
+    </div>`;
+  document.getElementById('app').insertBefore(banner, document.getElementById('content'));
+}
+
+function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(() => {
+    deferredPrompt = null;
+    const b = document.getElementById('install-banner');
+    if (b) b.remove();
+  });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
